@@ -1,0 +1,256 @@
+# SPDX-FileCopyrightText: 2023 Holger Steinhaus <hsteinhaus@gmx.de>
+#
+# SPDX-License-Identifier: MIT
+
+substitutions:
+  device_name: tempcontrol
+  friendly_name: TempControl
+  device_description: Room temperature controller with 0-10V output and 240x135 color display
+
+esphome:
+  name: ${device_name}
+  comment: ${device_description}
+
+esp32:
+# TTGO-T Display 1.0
+  board: ttgo-lora32-v1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  port: 6053
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  domain: .wifi.home
+
+web_server:
+  port: 80
+  ota: true
+
+time:
+  - platform: sntp
+    id: sntp_time
+  - platform: homeassistant
+    id: esptime
+
+color:
+  - id: my_red
+    red: 100%
+    green: 0%
+    blue: 0%
+  - id: my_yellow
+    red: 100%
+    green: 100%
+    blue: 0%
+  - id: my_green
+    red: 0%
+    green: 100%
+    blue: 0%
+  - id: my_blue
+    red: 25%
+    green: 25%
+    blue: 100%
+  - id: my_gray
+    red: 50%
+    green: 50%
+    blue: 50%
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+  - platform: gpio
+    pin:
+      number: GPIO0
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "T-Display Button Input 0"
+    id: minus_button
+    on_press:
+      then:
+      - lambda: |-
+          id(this_thermostat).target_temperature = ceil(id(this_thermostat).target_temperature * 2 - 1) *0.5;
+          id(oled1).update();
+      - climate.pid.reset_integral_term: this_thermostat
+    on_multi_click:
+      - timing:
+          - ON for at least 0.5s
+        then:
+          - while:
+              condition:
+                binary_sensor.is_on: minus_button
+              then:
+                - lambda: |-
+                    id(this_thermostat).target_temperature -= 0.1;
+                    id(oled1).update();
+                - delay: 0.05s
+          - climate.pid.reset_integral_term: this_thermostat
+
+  - platform: gpio
+    pin:
+      number: GPIO35
+      inverted: true
+    name: "T-Display Button Input 1"
+    id: plus_button
+    on_press:
+      then:
+      - lambda: |-
+          id(this_thermostat).target_temperature = floor(id(this_thermostat).target_temperature * 2 + 1) *0.5;
+          id(oled1).update();
+      - climate.pid.reset_integral_term: this_thermostat
+    on_multi_click:
+      - timing:
+          - ON for at least 0.5s
+        then:
+          - while:
+              condition:
+                binary_sensor.is_on: plus_button
+              then:
+                - lambda: |-
+                    id(this_thermostat).target_temperature += 0.1;
+                    id(oled1).update();
+                - delay: 0.05s
+          - climate.pid.reset_integral_term: this_thermostat
+
+  - platform: template
+    id: fire
+  - platform: template
+    id: cool
+
+
+# We can still control the backlight independently
+switch:
+  - platform: gpio
+    pin: GPIO4
+    name: "Backlight"
+    id: backlight
+  - platform: template
+    id: heat_cool
+    optimistic: true
+
+output:
+  - platform: ledc
+    pin: GPIO17
+    frequency: 1500Hz
+    id: heat_pwm_out
+    min_power: 0.01
+    max_power: 0.99
+  - platform: ledc
+    pin: GPIO15
+    frequency: 1500Hz
+    id: cool_pwm_out
+    min_power: 0.01
+    max_power: 0.99
+
+sensor:
+  - platform: dht
+    pin: GPIO13
+    temperature:
+      name: "Temperature"
+      id: internal_temperature
+      accuracy_decimals: 1
+      filters:
+        - offset: -2.2
+      unit_of_measurement: '°C'
+    humidity:
+      name: "Humidity"
+      id: internal_humidity
+      accuracy_decimals: 0
+    update_interval: 60s
+  - platform: pid
+    id: valve_pos
+    name: "Ventilposition"
+    type: HEAT
+  - platform: pid
+    name: "PROPORTIONAL"
+    type: PROPORTIONAL
+  - platform: pid
+    name: "INTEGRAL"
+    type: INTEGRAL
+  - platform: pid
+    name: "DERIVATIVE"
+    type: DERIVATIVE
+
+
+climate:
+  - platform: pid
+    id: this_thermostat
+    name: "PID Climate Controller"
+    sensor: internal_temperature
+    default_target_temperature: 21°C
+    heat_output: heat_pwm_out
+    control_parameters:
+      kp: 0.4
+      ki: 0.02
+      kd: 180.0
+      min_integral: 0.0
+      max_integral: 0.5
+      derivative_averaging_samples: 12
+      starting_integral_term: 0.3
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO19
+
+display:
+  - platform: st7789v
+    model: TTGO TDisplay 135x240
+    id: oled1
+    backlight_pin: GPIO4
+    cs_pin: GPIO5
+    dc_pin: GPIO16
+    reset_pin: GPIO23
+    rotation: 90
+    #update_interval: 0.5s
+    lambda: |-
+      if (id(fire).state) {id(ani_fire).next_frame(); it.image(0, 0, id(ani_fire));}
+      else if (id(cool).state) {id(ani_fan).next_frame(); it.image(0, 0, id(ani_fan));}
+      else {it.image(0, 0, id(home_thermometer));}
+      it.print(120, 0,  id(font1), id(my_blue), TextAlign::TOP_CENTER, "${room}");
+      it.printf(120, 58, id(font2), TextAlign::CENTER, " %.1f°", id(internal_temperature).state);
+      it.printf(0, 120, id(font3), TextAlign::BASELINE_LEFT, "T:%.1f°C", id(this_thermostat).target_temperature);
+      it.printf(240, 120, id(font3), TextAlign::BASELINE_RIGHT, "H:%.1f%%", id(internal_humidity).state);
+      it.rectangle(0, 129, 240, 6);
+      it.filled_rectangle(0, 130, int(id(valve_pos).state*2.4), 4);
+
+#      if (id(heat_cool).state) {it.image(16, 51, id(arrow_right));}
+#      else {it.image(16, 51, id(arrow_left));}
+animation:
+  - file: "icons/thermostat/fan.gif"
+    id: ani_fan
+  - file: "icons/thermostat/fire.gif"
+    id: ani_fire
+
+
+image:
+  - file: "icons/thermostat/home-thermometer.png"
+    id: home_thermometer
+  - file: "icons/thermostat/arrow-left-circle-outline.png"
+    id: arrow_left
+  - file: "icons/thermostat/arrow-right-circle-outline.png"
+    id: arrow_right
+  - file: "icons/thermostat/lightbulb-on-outline.png"
+    id: bulb
+
+font:
+  - file: "fonts/nasalization.ttf"
+    id: font1
+    size: 24
+  - file: "fonts/refsan.ttf"
+    id: font2
+    size: 64
+  - file: "fonts/refsan.ttf"
+    id: font3
+    size: 23
