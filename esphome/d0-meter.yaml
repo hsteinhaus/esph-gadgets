@@ -1,0 +1,260 @@
+# SPDX-FileCopyrightText: 2023 Holger Steinhaus <hsteinhaus@gmx.de>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+external_components:
+  - source: github://mampfes/esphome_obis_d0
+
+substitutions:
+  device_name: "d0-meter"
+  friendly_name: Grid meter
+  device_description: D0 to MQTT Grid meter interface
+
+esphome:
+  name: ${device_name}
+  comment: ${device_description}
+
+esp8266:
+  board: esp01_1m
+
+logger:
+  baud_rate: 0
+  hardware_uart: UART1
+  level: WARN
+
+api:
+  port: 6053
+
+ota:
+  password: !secret ota_password 
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  domain: .wifi.home
+
+web_server:
+  port: 80
+  ota: true
+
+uart:
+  id: uart0
+  rx_pin: GPIO3
+  baud_rate: 9600
+  data_bits: 7
+  parity: EVEN
+  stop_bits: 1
+
+obis_d0:
+  id: d0_0
+  uart_id: uart0
+
+sensor:
+  - platform: obis_d0
+    name: "Consumed Energy"
+    id: consumed_energy
+    obis_d0_id: d0_0
+    obis_code: "1-0:1.8.0*255"
+    unit_of_measurement: kWh
+    accuracy_decimals: 4
+    state_class: total_increasing
+    device_class: energy
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/Energy/Forward", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(consumed_energy).state;
+
+  - platform: obis_d0
+    name: "Exported Energy"
+    id: exported_energy
+    obis_d0_id: d0_0
+    obis_code: "1-0:2.8.0*255"
+    unit_of_measurement: kWh
+    accuracy_decimals: 4
+    state_class: total_increasing
+    device_class: energy
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/Energy/Reverse", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(exported_energy).state;
+
+  - platform: obis_d0
+    name: "Total power"
+    id: power_total
+    obis_d0_id: d0_0
+    obis_code: "1-0:16.7.0*255"
+    unit_of_measurement: W
+    accuracy_decimals: 2
+    state_class: total
+    device_class: power
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/Power", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(power_total).state;
+
+  - platform: obis_d0
+    name: "Power L1"
+    id: power_l1
+    obis_d0_id: d0_0
+    obis_code: "1-0:36.7.0*255"
+    unit_of_measurement: W
+    accuracy_decimals: 2
+    state_class: total
+    device_class: power
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/L1/Power", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(power_l1).state;
+
+  - platform: obis_d0
+    name: "Power L2"
+    id: power_l2
+    obis_d0_id: d0_0
+    obis_code: "1-0:56.7.0*255"
+    unit_of_measurement: W
+    accuracy_decimals: 2
+    state_class: total
+    device_class: power
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/L2/Power", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(power_l2).state;
+
+  - platform: obis_d0
+    name: "Power L3"
+    id: power_l3
+    obis_d0_id: d0_0
+    obis_code: "1-0:76.7.0*255"
+    unit_of_measurement: W
+    accuracy_decimals: 2
+    state_class: total
+    device_class: power
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/L3/Power", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(power_l3).state;
+
+  - platform: obis_d0
+    name: "Voltage L1"
+    id: voltage_l1
+    obis_d0_id: d0_0
+    obis_code: "1-0:32.7.0*255"
+    unit_of_measurement: V
+    accuracy_decimals: 1
+    state_class: total
+    device_class: power
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/L1/Voltage", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(voltage_l1).state;
+
+  - platform: obis_d0
+    name: "Voltage L2"
+    id: voltage_l2
+    obis_d0_id: d0_0
+    obis_code: "1-0:52.7.0*255"
+    unit_of_measurement: V
+    accuracy_decimals: 1
+    state_class: total
+    device_class: power
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/L2/Voltage", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(voltage_l2).state;
+
+  - platform: obis_d0
+    name: "Voltage L3"
+    id: voltage_l3
+    obis_d0_id: d0_0
+    obis_code: "1-0:72.7.0*255"
+    unit_of_measurement: V
+    accuracy_decimals: 1
+    state_class: total
+    device_class: power
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Ac/L3/Voltage", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(voltage_l3).state;
+
+text_sensor:
+  - platform: obis_d0
+    name: "Device Identification"
+    id: meter_id
+    obis_d0_id: d0_0
+    obis_code: "1-0:96.1.0*255"
+    entity_category: diagnostic
+    on_value:
+      then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/grid/%s/Serial", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = id(meter_id).state;
+
+  - platform: mqtt_subscribe
+    name: "Device status"
+    id: device_status
+    topic: device/d0mqtt/DBus
+
+globals:
+  - id: portal_id
+    type: std::string
+    restore_value: no
+    initial_value: '"<not set>"'
+  - id: device_instance
+    type: std::string
+    restore_value: no
+    initial_value: '"<not set>"'
+
+mqtt:
+  broker: ess.wifi.home
+  discovery: false
+  birth_message:
+    topic: device/d0mqtt/Status
+    payload: "{ \"clientId\": \"d0mqtt\", \"connected\": 1, \"version\": \"v1.0\", \"services\": {\"meter1\": \"grid\"} }"
+  will_message:
+    topic: device/d0mqtt/Status
+    payload: "{ \"clientId\": \"d0mqtt\", \"connected\": 0, \"services\": {\"meter1\": \"grid\"} }"
+  on_json_message:
+    topic: device/d0mqtt/DBus
+    then:
+      - lambda: |-
+          id(portal_id) = std::string(x["portalId"]);
+          id(device_instance) = std::string(x["deviceInstance"]["meter1"]);
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/grid/%s/CustomName", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = "D0-MQTT Meter";
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/grid/%s/Role", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = "grid";
