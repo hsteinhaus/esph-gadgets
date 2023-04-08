@@ -1,0 +1,501 @@
+# SPDX-FileCopyrightText: 2023 Holger Steinhaus
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+external_components:
+  - source: github://syssi/esphome-jk-bms@main
+
+substitutions:
+  device_name: jkbms
+  friendly_name: JKBMS supervisor
+  device_description: JKBMS MQTT publisher
+  name: JK BMS
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+
+
+esphome:
+  name: ${device_name}
+  comment: ${device_description}
+  project:
+    name: "jkbms2mqtt"
+
+esp32:
+  board: lolin32
+#  framework:
+#    type: arduino
+#    type: esp-idf
+
+# Enable logging
+logger:
+  level: INFO
+  baud_rate: 0
+
+# Enable Home Assistant API
+api:
+  reboot_timeout: 0s    
+  encryption:
+    key: !secret api_password
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  domain: .wifi.home
+
+web_server:
+  port: 80
+  ota: true
+
+time:
+  - platform: sntp
+    id: sntp_time
+  - platform: homeassistant
+    id: esptime
+
+
+uart:
+  - id: uart0
+    baud_rate: 115200
+    rx_buffer_size: 384
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+
+jk_modbus:
+  - id: modbus0
+    uart_id: uart0
+    rx_timeout: 50ms
+
+jk_bms:
+  - id: bms0
+    jk_modbus_id: modbus0
+    update_interval: 5s
+
+switch:
+  - platform: restart
+    name: "Restart"
+
+binary_sensor:
+  - platform: jk_bms
+    balancing:
+      name: "${name} balancing"
+      id: balancing
+      on_state:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Balancing", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+    balancing_switch:
+      name: "${name} balancing switch"
+    charging:
+      name: "${name} charging"
+      id: allow_to_charge
+      on_state:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Io/AllowToCharge", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/System/NrOfModulesBlockingCharge", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x ? 0 : 1;
+    charging_switch:
+      name: "${name} charging switch"
+    discharging:
+      name: "${name} charging"
+      id: allow_to_discharge
+      on_state:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Io/AllowToDischarge", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/System/NrOfModulesBlockingDischarge", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x ? 0 : 1;
+    discharging_switch:
+      name: "${name} discharging switch"
+    dedicated_charger_switch:
+      name: "${name} dedicated charger switch"
+    online_status:
+      name: "${name} online status"
+
+sensor:
+  - platform: jk_bms
+    min_cell_voltage:
+      name: "${name} min cell voltage"
+      id: min_cell_voltage
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/System/MinCellVoltage", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+    max_cell_voltage:
+      name: "${name} max cell voltage"
+      id: max_cell_voltage
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/System/MaxCellVoltage", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+    min_voltage_cell:
+      name: "${name} min voltage cell"
+    max_voltage_cell:
+      name: "${name} max voltage cell"
+    delta_cell_voltage:
+      name: "${name} delta cell voltage"
+    average_cell_voltage:
+      name: "${name} average cell voltage"
+    cell_voltage_1:
+      id: cv1
+      name: "${name} cell voltage 1"
+    cell_voltage_2:
+      id: cv2
+      name: "${name} cell voltage 2"
+    cell_voltage_3:
+      id: cv3
+      name: "${name} cell voltage 3"
+    cell_voltage_4:
+      id: cv4
+      name: "${name} cell voltage 4"
+    cell_voltage_5:
+      id: cv5
+      name: "${name} cell voltage 5"
+    cell_voltage_6:
+      id: cv6
+      name: "${name} cell voltage 6"
+    cell_voltage_7:
+      id: cv7
+      name: "${name} cell voltage 7"
+    cell_voltage_8:
+      id: cv8
+      name: "${name} cell voltage 8"
+    power_tube_temperature:
+      name: "${name} power tube temperature"
+    temperature_sensor_1:
+      name: "${name} temperature sensor 1"
+      id: t1
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Dc/0/Temperature", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;          
+    temperature_sensor_2:
+      name: "${name} temperature sensor 2"
+    total_voltage:
+      name: "${name} total voltage"
+      id: total_voltage
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Dc/0/Voltage", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+    current:
+      name: "${name} current"
+      id: current
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Dc/0/Current", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+    power:
+      name: "${name} power"
+      id: power
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Dc/0/Power", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;      
+    charging_power:
+      name: "${name} charging power"
+    discharging_power:
+      name: "${name} discharging power"
+    capacity_remaining:
+      name: "${name} capacity remaining"
+      id: soc
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Soc", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;  
+    capacity_remaining_derived:
+      name: "${name} capacity remaining derived"
+      id: remaining_ah
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/Capacity", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;  
+    temperature_sensors:
+      name: "${name} temperature sensors"
+    charging_cycles:
+      name: "${name} charging cycles"
+    total_charging_cycle_capacity:
+      name: "${name} total charging cycle capacity"
+    battery_strings:
+      name: "${name} battery strings"
+#      filters:
+#        - throttle: 300s
+      id: cell_count
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/System/NrOfCellsPerBattery", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;  
+    errors_bitmask:
+      name: "${name} errors bitmask"
+    operation_mode_bitmask:
+      name: "${name} operation mode bitmask"
+    total_voltage_overvoltage_protection:
+      name: "${name} total voltage overvoltage protection"
+    total_voltage_undervoltage_protection:
+      name: "${name} total voltage undervoltage protection"
+    cell_voltage_overvoltage_protection:
+      name: "${name} cell voltage overvoltage protection"
+    cell_voltage_overvoltage_recovery:
+      name: "${name} cell voltage overvoltage recovery"
+    cell_voltage_overvoltage_delay:
+      name: "${name} cell voltage overvoltage delay"
+    cell_voltage_undervoltage_protection:
+      name: "${name} cell voltage undervoltage protection"
+    cell_voltage_undervoltage_recovery:
+      name: "${name} cell voltage undervoltage recovery"
+    cell_voltage_undervoltage_delay:
+      name: "${name} cell voltage undervoltage delay"
+    cell_pressure_difference_protection:
+      name: "${name} cell pressure difference protection"
+    discharging_overcurrent_protection:
+      name: "${name} discharging overcurrent protection"
+    discharging_overcurrent_delay:
+      name: "${name} discharging overcurrent delay"
+    charging_overcurrent_protection:
+      name: "${name} charging overcurrent protection"
+    charging_overcurrent_delay:
+      name: "${name} charging overcurrent delay"
+    balance_starting_voltage:
+      name: "${name} balance starting voltage"
+    balance_opening_pressure_difference:
+      name: "${name} balance opening pressure difference"
+    power_tube_temperature_protection:
+      name: "${name} power tube temperature protection"
+    power_tube_temperature_recovery:
+      name: "${name} power tube temperature recovery"
+    temperature_sensor_temperature_protection:
+      name: "${name} temperature sensor temperature protection"
+    temperature_sensor_temperature_recovery:
+      name: "${name} temperature sensor temperature recovery"
+    temperature_sensor_temperature_difference_protection:
+      name: "${name} temperature sensor temperature difference protection"
+    charging_high_temperature_protection:
+      name: "${name} charging high temperature protection"
+    discharging_high_temperature_protection:
+      name: "${name} discharging high temperature protection"
+    charging_low_temperature_protection:
+      name: "${name} charging low temperature protection"
+    charging_low_temperature_recovery:
+      name: "${name} charging low temperature recovery"
+    discharging_low_temperature_protection:
+      name: "${name} discharging low temperature protection"
+    discharging_low_temperature_recovery:
+      name: "${name} discharging low temperature recovery"
+    total_battery_capacity_setting:
+      name: "${name} total battery capacity setting"
+    current_calibration:
+      name: "${name} current calibration"
+    device_address:
+      name: "${name} device address"
+    sleep_wait_time:
+      name: "${name} sleep wait time"
+    alarm_low_volume:
+      name: "${name} alarm low volume"
+    manufacturing_date:
+      name: "${name} manufacturing date"
+    total_runtime:
+      name: "${name} total runtime"
+#    start_current_calibration:
+#      name: "${name} start current calibration"
+    actual_battery_capacity:
+      name: "${name} actual battery capacity"
+      id: actual_capacity
+      on_value:
+        then:
+        - mqtt.publish_json:
+            topic: !lambda |-
+              return str_sprintf("W/%s/battery/%s/InstalledCapacity", id(portal_id).c_str(), id(device_instance).c_str());
+            payload: |-
+              root["value"] = x;  
+
+#    protocol_version:
+#      name: "${name} protocol version"
+
+
+text_sensor:
+  - platform: jk_bms
+    errors:
+      name: "${name} errors"
+    operation_mode:
+      name: "${name} operation mode"
+    battery_type:
+      name: "${name} battery type"
+    password:
+      name: "${name} password"
+    device_type:
+      name: "${name} device type"
+    software_version:
+      name: "${name} software version"
+    manufacturer:
+      name: "${name} manufacturer"
+    total_runtime_formatted:
+      name: "${name} total runtime formatted"
+
+  - platform: mqtt_subscribe
+    name: "Device status"
+    id: device_status
+    topic: device/jkmqtt/DBus
+
+
+font:
+  - file: 'Arial.ttf'
+    id: font1
+    size: 12
+
+i2c:
+  sda: 5
+  scl: 4
+
+interval:
+  - interval: 5s
+    then:
+      - display.page.show_next: my_display
+      - component.update: my_display
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    address: 0x3C
+    id: my_display
+    pages:
+      - id: page1
+        lambda: |-
+          for (int i=1; i<8; i++) {
+            it.printf(
+              0, i*8, id(font1), 
+              "Cell %.1f", id(cv1).state
+            );
+          }
+      - id: page2
+        lambda: |-
+          it.print(0, 10, id(font1), "This is page 2!");
+
+
+
+globals:
+  - id: portal_id
+    type: std::string
+    restore_value: no
+    initial_value: '"<not set>"'
+  - id: device_instance
+    type: std::string
+    restore_value: no
+    initial_value: '"<not set>"'
+
+mqtt:
+  broker: venus.local
+  discovery: false
+  birth_message:
+    topic: device/jkmqtt/Status
+    payload: "{ \"clientId\": \"jkmqtt\", \"connected\": 1, \"version\": \"v1.0\", \"services\": {\"jkbms1\": \"battery\"} }"
+  will_message:
+    topic: device/jkmqtt/Status
+    payload: "{ \"clientId\": \"jkmqtt\", \"connected\": 0, \"services\": {\"jkbms1\": \"battery\"} }"
+  on_json_message:
+    topic: device/jkmqtt/DBus
+    then:
+      - lambda: |-
+          id(portal_id) = x["portalId"].as<std::string>();
+          id(device_instance) = x["deviceInstance"]["jkbms1"].as<std::string>();
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/CustomName", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = "JKBMS via MQTT";
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/System/NrOfBatteries", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = 1;
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/System/BatteriesParallel", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = 1;
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/System/BatteriesSeries", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = 1;
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/System/NrOfModulesOnline", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = 1;
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/System/NrOfModulesOffline", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = 0;
+      # publish initial values for on_state flags
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/Balancing", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = false;
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/Io/AllowToCharge", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = true;      
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/Io/AllowToDischarge", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = true;      
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/System/NrOfModulesBlockingCharge", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = 0;
+      - mqtt.publish_json:
+          topic: !lambda |-
+            return str_sprintf("W/%s/battery/%s/System/NrOfModulesBlockingDischarge", id(portal_id).c_str(), id(device_instance).c_str());
+          payload: |-
+            root["value"] = 0;
+
